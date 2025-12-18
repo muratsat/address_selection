@@ -45,25 +45,6 @@ function MapController({ center, onMoveEnd }: MapControllerProps) {
   return null
 }
 
-interface MapZoomControllerProps {
-  onZoomIn: () => void
-  onZoomOut: () => void
-}
-
-function MapZoomController({ onZoomIn, onZoomOut }: MapZoomControllerProps) {
-  const map = useMap()
-
-  useEffect(() => {
-    const handleZoomIn = () => map.zoomIn()
-    const handleZoomOut = () => map.zoomOut()
-
-    onZoomIn = handleZoomIn
-    onZoomOut = handleZoomOut
-  }, [map])
-
-  return null
-}
-
 export function AddressSelection() {
   const [center, setCenter] = useState<Location>(BISHKEK_CENTER)
   const [confirmedCenter, setConfirmedCenter] = useState<Location>(BISHKEK_CENTER)
