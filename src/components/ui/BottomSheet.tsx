@@ -1,9 +1,6 @@
 "use client";
 import type { Address, SearchResult } from "@/types/location";
-import {
-  Drawer,
-  DrawerContent
-} from "@/components/ui/drawer";
+import { Drawer, DrawerContent } from "@/components/ui/drawer";
 import { useEffect, useState } from "react";
 import { Search, MapPin, Loader2, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -37,18 +34,18 @@ export function BottomSheet({
 }: BottomSheetProps) {
   // Define snap points based on state
   const snapPoints: (number | string)[] =
-    state === "search" ? ["500px", 1] : ["300px", "500px", 1];
+    state === "search" ? ["400px", 1] : ["200px", "400px", 1];
 
   const getActiveSnapPoint = (): number | string | null => {
     switch (state) {
       case "panning":
-        return "300px"; // Low snap point when panning
+        return "200px"; // Low snap point when panning
       case "preview":
-        return "500px"; // Medium snap point for preview
+        return "400px"; // Medium snap point for preview
       case "search":
         return 1; // Full height for search
       default:
-        return "500px";
+        return "400px";
     }
   };
 
@@ -64,7 +61,7 @@ export function BottomSheet({
 
   // Handle snap point changes - if user drags down in search mode, exit search
   useEffect(() => {
-    if (state === "search" && snap === "500px") {
+    if (state === "search" && snap === "400px") {
       // User dragged down from full height, exit search mode
       onSearchClose?.();
     }
