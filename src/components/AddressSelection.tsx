@@ -6,12 +6,7 @@ import type { Address, Location, SearchResult } from "@/types/location";
 import { reverseGeocode, searchLocation } from "@/services/geocoding";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { SearchBar } from "./ui/SearchBar";
-import { LocationButton } from "./ui/LocationButton";
-import { ZoomControls } from "./ui/ZoomControls";
 import { BottomSheet, type DrawerState } from "./ui/BottomSheet";
-import { Button } from "./ui/button";
-import { MapPin } from "lucide-react";
 
 // Bishkek center coordinates
 const BISHKEK_CENTER: Location = {
@@ -51,8 +46,6 @@ function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
 
 export function AddressSelection() {
   const [center, setCenter] = useState<Location>(BISHKEK_CENTER);
-  const [confirmedCenter, setConfirmedCenter] =
-    useState<Location>(BISHKEK_CENTER);
   const [confirmedAddress, setConfirmedAddress] = useState<Address | null>(
     null
   );
@@ -61,19 +54,13 @@ export function AddressSelection() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [showSelectButton, setShowSelectButton] = useState(false);
   const [drawerState, setDrawerState] = useState<DrawerState>("preview");
-  const [isPanning, setIsPanning] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
 
   const debouncedCenter = useDebounce(center, 500);
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  const {
-    location: gpsLocation,
-    loading: gpsLoading,
-    getCurrentLocation
-  } = useGeolocation();
+  const { location: gpsLocation } = useGeolocation();
 
   // Load initial address on mount
   useEffect(() => {
@@ -141,17 +128,8 @@ export function AddressSelection() {
     }
   }, [gpsLocation]);
 
-  // Check if location has changed from confirmed location
-  useEffect(() => {
-    const hasChanged =
-      Math.abs(center.lat - confirmedCenter.lat) > 0.0001 ||
-      Math.abs(center.lng - confirmedCenter.lng) > 0.0001;
-    setShowSelectButton(hasChanged);
-  }, [center, confirmedCenter]);
-
   const handleMapMoveStart = () => {
     // User is panning the map
-    setIsPanning(true);
     if (drawerState !== "search") {
       setDrawerState("panning");
     }
@@ -160,20 +138,9 @@ export function AddressSelection() {
   const handleMapMoveEnd = (newLocation: Location) => {
     setCenter(newLocation);
     // User stopped panning
-    setIsPanning(false);
     if (drawerState === "panning") {
       setDrawerState("preview");
     }
-  };
-
-  const handleConfirm = () => {
-    setConfirmedCenter(center);
-    setConfirmedAddress(previewAddress);
-    console.log("Selected location:", {
-      center,
-      address: previewAddress
-    });
-    alert(`Location confirmed: ${previewAddress?.displayName || "Unknown"}`);
   };
 
   const handleSearchOpen = () => {
@@ -272,7 +239,6 @@ export function AddressSelection() {
         searchQuery={searchQuery}
         searchResults={searchResults}
         isSearching={isSearching}
-        onConfirm={handleConfirm}
         onSearchChange={handleSearchChange}
         onSearchResultClick={handleSearchResultClick}
         onSearchOpen={handleSearchOpen}

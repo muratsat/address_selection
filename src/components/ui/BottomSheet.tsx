@@ -1,6 +1,5 @@
 "use client";
 import type { Address, SearchResult } from "@/types/location";
-import { Button } from "@/components/ui/button";
 import {
   Drawer,
   DrawerContent
@@ -18,7 +17,6 @@ interface BottomSheetProps {
   searchQuery: string;
   searchResults: SearchResult[];
   isSearching: boolean;
-  onConfirm: () => void;
   onSearchChange: (query: string) => void;
   onSearchResultClick: (result: SearchResult) => void;
   onSearchOpen: () => void;
@@ -32,7 +30,6 @@ export function BottomSheet({
   searchQuery,
   searchResults,
   isSearching,
-  onConfirm,
   onSearchChange,
   onSearchResultClick,
   onSearchOpen,
