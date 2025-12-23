@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Address, Location } from "@/types/location";
-import { reverseGeocode } from "@/services/geocoding";
-import { MapPin } from "lucide-react";
+import type { Address, Location, SearchResult } from "@/types/location";
+import { reverseGeocode, searchLocation } from "@/services/geocoding";
+import { MapPin, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -14,6 +14,7 @@ const BISHKEK_CENTER: Location = {
 };
 
 const DEFAULT_ZOOM = 13;
+const SEARCH_ZOOM = 16;
 
 interface MapControllerProps {
   center: Location;
@@ -44,7 +45,13 @@ export function AddressSelection() {
   const [loading, setLoading] = useState(false);
   const [address, setAddress] = useState<Address | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+
   const mapRef = useRef<L.Map | null>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleMapMoveStart = () => {
     setIsPanning(true);
@@ -54,13 +61,141 @@ export function AddressSelection() {
     setCenter(newLocation);
     setIsPanning(false);
     setLoading(true);
-    const newAddress = await reverseGeocode(center);
+    const newAddress = await reverseGeocode(newLocation);
     setLoading(false);
     setAddress(newAddress);
   };
 
+  // Debounced search
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchLocation(searchQuery);
+        setSearchResults(results);
+        setShowResults(true);
+      } catch (error) {
+        console.error("Search failed:", error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  const handleSearchResultSelect = async (result: SearchResult) => {
+    // Close search results
+    setShowResults(false);
+    setSearchQuery("");
+    setSearchResults([]);
+
+    // Smoothly fly to the selected location
+    if (mapRef.current) {
+      const map = mapRef.current;
+
+      // Use flyTo for smooth animation with zoom
+      map.flyTo([result.location.lat, result.location.lng], SEARCH_ZOOM, {
+        duration: 1.5, // 1.5 seconds animation
+        easeLinearity: 0.25
+      });
+
+      // Set loading state and fetch address after animation
+      setLoading(true);
+
+      // Wait for animation to complete, then reverse geocode
+      setTimeout(async () => {
+        setCenter(result.location);
+        const newAddress = await reverseGeocode(result.location);
+        setAddress(newAddress);
+        setLoading(false);
+      }, 1500); // Match the flyTo duration
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery("");
+    setSearchResults([]);
+    setShowResults(false);
+  };
+
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-gray-100">
+      {/* Search Bar */}
+      <div className="absolute top-0 left-0 right-0 p-4" style={{ zIndex: 1001 }}>
+        <div className="max-w-2xl mx-auto relative">
+          <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+              <Search className="w-5 h-5" />
+            </div>
+            <input
+              type="text"
+              placeholder="Search for an address..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-11 pr-11 py-3 bg-white border border-slate-200 rounded-lg shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
+
+          {/* Search Results Dropdown */}
+          {showResults && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-lg shadow-xl max-h-80 overflow-y-auto w-full">
+              {isSearching ? (
+                <div className="p-4 text-sm text-slate-500 text-center">
+                  Searching...
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="py-2">
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      onClick={() => handleSearchResultSelect(result)}
+                      className="w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0"
+                    >
+                      <div className="flex items-start gap-3">
+                        <MapPin className="w-5 h-5 text-blue-500 mt-0.5 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">
+                            {result.displayName}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-4 text-sm text-slate-500 text-center">
+                  No results found
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <MapContainer
           center={[center.lat, center.lng]}
