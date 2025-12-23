@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Location } from "@/types/location";
-import { BottomSheet, type DrawerState } from "./ui/BottomSheet";
+import type { Address, Location } from "@/types/location";
+import { reverseGeocode } from "@/services/geocoding";
+import { MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const BISHKEK_CENTER: Location = {
   lat: 42.8746,
@@ -18,12 +21,8 @@ interface MapControllerProps {
   onMoveStart: () => void;
 }
 
-function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
+function MapController({ onMoveEnd, onMoveStart }: MapControllerProps) {
   const map = useMap();
-
-  useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom());
-  }, [center, map]);
 
   useMapEvents({
     movestart: () => {
@@ -41,15 +40,23 @@ function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
 export function AddressSelection() {
   const [center, setCenter] = useState<Location>(BISHKEK_CENTER);
   const [isPanning, setIsPanning] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [address, setAddress] = useState<Address | null>(null);
+
   const mapRef = useRef<L.Map | null>(null);
 
   const handleMapMoveStart = () => {
     setIsPanning(true);
   };
 
-  const handleMapMoveEnd = (newLocation: Location) => {
+  const handleMapMoveEnd = async (newLocation: Location) => {
     setCenter(newLocation);
     setIsPanning(false);
+    setLoading(true);
+    const newAddress = await reverseGeocode(center);
+    setLoading(false);
+    setAddress(newAddress);
   };
 
   return (
@@ -100,7 +107,7 @@ export function AddressSelection() {
         </div>
         {/* Shadow */}
         <div
-          className="absolute left-1/2 -translate-x-1/2 top-0 bg-black rounded-full transition-all duration-200 ease-out"
+          className="absolute left-1/2 -translate-x-1/2 top-0 bg-black rounded-full transition-all duration-200 ease-out "
           style={{
             width: isPanning ? 12 : 8,
             height: isPanning ? 4 : 3,
@@ -109,10 +116,31 @@ export function AddressSelection() {
         />
       </div>
 
-      <div className="fixed p-2 rounded-lg bottom-0  bg-white w-full text-center">
-        <span>
-          {center.lat.toFixed(8)} {center.lng.toFixed(8)}
-        </span>
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg">
+        <div className="max-w-2xl mx-auto px-4 py-6">
+          <div className="flex items-center gap-4">
+            <div className="shrink-0">
+              <div className="w-12 h-12 rounded-lg bg-linear-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                <MapPin className="w-6 h-6 text-white" />
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              {loading ? (
+                <Skeleton className="h-5 w-48 bg-slate-200" />
+              ) : (
+                <p className="text-sm font-medium text-slate-900 truncate">
+                  {address?.displayName ?? "Detecting location..."}
+                </p>
+              )}
+              <p className="text-xs text-slate-500 mt-1">Delivery address</p>
+            </div>
+
+            <Button disabled={loading || !address}>
+              {loading ? "Loading..." : "Confirm"}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
