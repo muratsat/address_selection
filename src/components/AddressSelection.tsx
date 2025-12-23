@@ -2,17 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Address, Location, SearchResult } from "@/types/location";
-import { reverseGeocode, searchLocation } from "@/services/geocoding";
-import { useDebounce } from "@/hooks/useDebounce";
-import { useGeolocation } from "@/hooks/useGeolocation";
+import type { Location } from "@/types/location";
 import { BottomSheet, type DrawerState } from "./ui/BottomSheet";
 
-// Bishkek center coordinates
 const BISHKEK_CENTER: Location = {
   lat: 42.8746,
   lng: 74.5698
 };
+
+const PIN_OFFSET_PX = 150;
 
 const DEFAULT_ZOOM = 13;
 
@@ -24,20 +22,46 @@ interface MapControllerProps {
 
 function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
   const map = useMap();
+  const isProgrammaticMove = useRef(false);
+  const pendingCenter = useRef<Location | null>(null);
 
-  // Handle programmatic center changes
   useEffect(() => {
-    map.setView([center.lat, center.lng], map.getZoom());
+    // Skip if this center came from user panning
+    if (
+      pendingCenter.current &&
+      pendingCenter.current.lat === center.lat &&
+      pendingCenter.current.lng === center.lng
+    ) {
+      pendingCenter.current = null;
+      return;
+    }
+
+    isProgrammaticMove.current = true;
+    const targetPoint = map.latLngToContainerPoint([center.lat, center.lng]);
+    const offsetPoint = L.point(targetPoint.x, targetPoint.y - PIN_OFFSET_PX);
+    const offsetLatLng = map.containerPointToLatLng(offsetPoint);
+    map.setView(offsetLatLng, map.getZoom());
   }, [center, map]);
 
-  // Handle map move events
   useMapEvents({
     movestart: () => {
-      onMoveStart();
+      if (!isProgrammaticMove.current) {
+        onMoveStart();
+      }
     },
     moveend: () => {
-      const center = map.getCenter();
-      onMoveEnd({ lat: center.lat, lng: center.lng });
+      if (isProgrammaticMove.current) {
+        isProgrammaticMove.current = false;
+        return;
+      }
+      const mapCenter = map.getCenter();
+      const centerPoint = map.latLngToContainerPoint(mapCenter);
+      const offsetPoint = L.point(centerPoint.x, centerPoint.y + PIN_OFFSET_PX);
+      const offsetLatLng = map.containerPointToLatLng(offsetPoint);
+
+      // Track what we're about to set so useEffect knows to skip it
+      pendingCenter.current = { lat: offsetLatLng.lat, lng: offsetLatLng.lng };
+      onMoveEnd(pendingCenter.current);
     }
   });
 
@@ -46,90 +70,10 @@ function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
 
 export function AddressSelection() {
   const [center, setCenter] = useState<Location>(BISHKEK_CENTER);
-  const [confirmedAddress, setConfirmedAddress] = useState<Address | null>(
-    null
-  );
-  const [previewAddress, setPreviewAddress] = useState<Address | null>(null);
-  const [loadingAddress, setLoadingAddress] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [drawerState, setDrawerState] = useState<DrawerState>("preview");
   const mapRef = useRef<L.Map | null>(null);
 
-  const debouncedCenter = useDebounce(center, 500);
-  const debouncedSearchQuery = useDebounce(searchQuery, 300);
-
-  const { location: gpsLocation } = useGeolocation();
-
-  // Load initial address on mount
-  useEffect(() => {
-    const loadInitialAddress = async () => {
-      setLoadingAddress(true);
-      try {
-        const initialAddress = await reverseGeocode(BISHKEK_CENTER);
-        setConfirmedAddress(initialAddress);
-        setPreviewAddress(initialAddress);
-      } catch (error) {
-        console.error("Failed to load initial address:", error);
-      } finally {
-        setLoadingAddress(false);
-      }
-    };
-
-    loadInitialAddress();
-  }, []);
-
-  // Update preview address when center changes (debounced)
-  useEffect(() => {
-    const updateAddress = async () => {
-      setLoadingAddress(true);
-      try {
-        const newAddress = await reverseGeocode(debouncedCenter);
-        setPreviewAddress(newAddress);
-      } catch (error) {
-        console.error("Failed to reverse geocode:", error);
-        setPreviewAddress(null);
-      } finally {
-        setLoadingAddress(false);
-      }
-    };
-
-    updateAddress();
-  }, [debouncedCenter]);
-
-  // Search locations (debounced)
-  useEffect(() => {
-    if (!debouncedSearchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    const search = async () => {
-      setIsSearching(true);
-      try {
-        const results = await searchLocation(debouncedSearchQuery);
-        setSearchResults(results);
-      } catch (error) {
-        console.error("Search failed:", error);
-        setSearchResults([]);
-      } finally {
-        setIsSearching(false);
-      }
-    };
-
-    search();
-  }, [debouncedSearchQuery]);
-
-  // Handle GPS location
-  useEffect(() => {
-    if (gpsLocation) {
-      setCenter(gpsLocation);
-    }
-  }, [gpsLocation]);
-
   const handleMapMoveStart = () => {
-    // User is panning the map
     if (drawerState !== "search") {
       setDrawerState("panning");
     }
@@ -137,36 +81,15 @@ export function AddressSelection() {
 
   const handleMapMoveEnd = (newLocation: Location) => {
     setCenter(newLocation);
-    // User stopped panning
     if (drawerState === "panning") {
       setDrawerState("preview");
     }
   };
 
-  const handleSearchOpen = () => {
-    setDrawerState("search");
-  };
-
-  const handleSearchClose = () => {
-    setSearchQuery("");
-    setSearchResults([]);
-    setDrawerState("preview");
-  };
-
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-  };
-
-  const handleSearchResultClick = (result: SearchResult) => {
-    setCenter(result.location);
-    setSearchQuery("");
-    setSearchResults([]);
-    setDrawerState("preview");
-  };
+  const isPanning = drawerState === "panning";
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-gray-100">
-      {/* Map */}
       <div className="absolute inset-0" style={{ zIndex: 0 }}>
         <MapContainer
           center={[center.lat, center.lng]}
@@ -187,63 +110,43 @@ export function AddressSelection() {
         </MapContainer>
       </div>
 
-      {/* Center Pin Marker */}
-      <div className="absolute left-1/2 top-1/2 z-10 pointer-events-none">
-        <div className="relative -translate-x-1/2 -translate-y-full">
-          {/* Pin Icon */}
+      {/* Center Pin */}
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none z-50"
+        style={{ marginTop: -PIN_OFFSET_PX }}
+      >
+        {/* Pin */}
+        <div
+          className="transition-transform duration-200 ease-out"
+          style={{ transform: `translateY(${isPanning ? -12 : 0}px)` }}
+        >
           <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
+            width="40"
+            height="50"
+            viewBox="0 0 40 50"
             fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="drop-shadow-lg"
+            style={{ transform: "translateY(-100%)" }}
           >
             <path
-              d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"
-              fill="#FCD535"
-              stroke="#000"
-              strokeWidth="1"
+              d="M20 0C8.954 0 0 8.954 0 20c0 14 20 30 20 30s20-16 20-30C40 8.954 31.046 0 20 0z"
+              fill="#E53935"
             />
-            <circle cx="12" cy="9" r="2.5" fill="#000" />
+            <circle cx="20" cy="18" r="7" fill="white" />
           </svg>
-          {/* Pin shadow */}
-          <div className="absolute left-1/2 top-full -translate-x-1/2 w-6 h-2 bg-black/20 rounded-full blur-sm" />
         </div>
+        {/* Shadow */}
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-0 bg-black rounded-full transition-all duration-200 ease-out"
+          style={{
+            width: isPanning ? 12 : 8,
+            height: isPanning ? 4 : 3,
+            opacity: isPanning ? 0.25 : 0.4
+          }}
+        />
       </div>
 
-      {/* selected address at the top */}
-      {/* <div className="absolute top-0 left-0 right-0 h-dvh-sm bg-white">
-        <div className="flex items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4" />
-            <span className="text-sm font-medium">
-              {confirmedAddress?.displayName || "Unknown"}
-            </span>
-          </div>
-          <Button
-            variant="secondary"
-            className="h-dvh-sm"
-            onClick={handleConfirm}
-          >
-            Confirm
-          </Button>
-        </div>
-      </div> */}
-
       {/* Bottom sheet */}
-      <BottomSheet
-        state={drawerState}
-        address={drawerState === "panning" ? confirmedAddress : previewAddress}
-        loading={loadingAddress}
-        searchQuery={searchQuery}
-        searchResults={searchResults}
-        isSearching={isSearching}
-        onSearchChange={handleSearchChange}
-        onSearchResultClick={handleSearchResultClick}
-        onSearchOpen={handleSearchOpen}
-        onSearchClose={handleSearchClose}
-      />
+      <BottomSheet state={drawerState} pinLocation={center} />
     </div>
   );
 }
