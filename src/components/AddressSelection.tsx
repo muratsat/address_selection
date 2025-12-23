@@ -10,8 +10,6 @@ const BISHKEK_CENTER: Location = {
   lng: 74.5698
 };
 
-const PIN_OFFSET_PX = 150;
-
 const DEFAULT_ZOOM = 13;
 
 interface MapControllerProps {
@@ -22,46 +20,18 @@ interface MapControllerProps {
 
 function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
   const map = useMap();
-  const isProgrammaticMove = useRef(false);
-  const pendingCenter = useRef<Location | null>(null);
 
   useEffect(() => {
-    // Skip if this center came from user panning
-    if (
-      pendingCenter.current &&
-      pendingCenter.current.lat === center.lat &&
-      pendingCenter.current.lng === center.lng
-    ) {
-      pendingCenter.current = null;
-      return;
-    }
-
-    isProgrammaticMove.current = true;
-    const targetPoint = map.latLngToContainerPoint([center.lat, center.lng]);
-    const offsetPoint = L.point(targetPoint.x, targetPoint.y - PIN_OFFSET_PX);
-    const offsetLatLng = map.containerPointToLatLng(offsetPoint);
-    map.setView(offsetLatLng, map.getZoom());
+    map.setView([center.lat, center.lng], map.getZoom());
   }, [center, map]);
 
   useMapEvents({
     movestart: () => {
-      if (!isProgrammaticMove.current) {
-        onMoveStart();
-      }
+      onMoveStart();
     },
     moveend: () => {
-      if (isProgrammaticMove.current) {
-        isProgrammaticMove.current = false;
-        return;
-      }
-      const mapCenter = map.getCenter();
-      const centerPoint = map.latLngToContainerPoint(mapCenter);
-      const offsetPoint = L.point(centerPoint.x, centerPoint.y + PIN_OFFSET_PX);
-      const offsetLatLng = map.containerPointToLatLng(offsetPoint);
-
-      // Track what we're about to set so useEffect knows to skip it
-      pendingCenter.current = { lat: offsetLatLng.lat, lng: offsetLatLng.lng };
-      onMoveEnd(pendingCenter.current);
+      const center = map.getCenter();
+      onMoveEnd({ lat: center.lat, lng: center.lng });
     }
   });
 
@@ -70,23 +40,17 @@ function MapController({ center, onMoveEnd, onMoveStart }: MapControllerProps) {
 
 export function AddressSelection() {
   const [center, setCenter] = useState<Location>(BISHKEK_CENTER);
-  const [drawerState, setDrawerState] = useState<DrawerState>("preview");
+  const [isPanning, setIsPanning] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
 
   const handleMapMoveStart = () => {
-    if (drawerState !== "search") {
-      setDrawerState("panning");
-    }
+    setIsPanning(true);
   };
 
   const handleMapMoveEnd = (newLocation: Location) => {
     setCenter(newLocation);
-    if (drawerState === "panning") {
-      setDrawerState("preview");
-    }
+    setIsPanning(false);
   };
-
-  const isPanning = drawerState === "panning";
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-gray-100">
@@ -112,8 +76,8 @@ export function AddressSelection() {
 
       {/* Center Pin */}
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none z-50"
-        style={{ marginTop: -PIN_OFFSET_PX }}
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none"
+        style={{ zIndex: 1000 }}
       >
         {/* Pin */}
         <div
@@ -145,8 +109,11 @@ export function AddressSelection() {
         />
       </div>
 
-      {/* Bottom sheet */}
-      <BottomSheet state={drawerState} pinLocation={center} />
+      <div className="fixed p-2 rounded-lg bottom-0  bg-white w-full text-center">
+        <span>
+          {center.lat.toFixed(8)} {center.lng.toFixed(8)}
+        </span>
+      </div>
     </div>
   );
 }

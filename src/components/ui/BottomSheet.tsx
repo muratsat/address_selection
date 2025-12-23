@@ -62,7 +62,7 @@ export function BottomSheet({ state, pinLocation }: BottomSheetProps) {
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <MapPin className="h-4 w-4" />
               <span className="flex-1 truncate">
-                {pinLocation.lat.toFixed(4)} {pinLocation.lng.toFixed(4)}
+                {pinLocation.lat.toFixed(8)} {pinLocation.lng.toFixed(8)}
               </span>
             </div>
           </div>
@@ -75,7 +75,7 @@ export function BottomSheet({ state, pinLocation }: BottomSheetProps) {
                 <MapPin className="h-5 w-5 text-primary mt-0.5" />
                 <div className="flex-1 min-w-0">
                   <h3 className="font-semibold text-base truncate">
-                    {pinLocation.lat.toFixed(4)} {pinLocation.lng.toFixed(4)}
+                    {pinLocation.lat.toFixed(8)} {pinLocation.lng.toFixed(8)}
                   </h3>
                 </div>
                 <Search className="h-5 w-5 text-muted-foreground" />
